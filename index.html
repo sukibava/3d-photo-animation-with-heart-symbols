@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Floating Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000000;
+            font-family: sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        /* The file upload button style is removed as it's no longer needed */
+    </style>
+</head>
+<body>
+    <!-- The file upload UI has been removed -->
+
+    <!-- The three.js library is included here -->
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- Basic Scene Setup ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.05);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 15;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.enablePan = false;
+        controls.minDistance = 5;
+        controls.maxDistance = 40;
+
+        // --- Post Processing (for Glow Effect) ---
+        const composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            1.0,  // strength - Balanced for a visible but soft glow
+            0.4,  // radius 
+            0.2   // threshold - Kept standard, intensity change is key
+        );
+        composer.addPass(bloomPass);
+
+
+        // --- Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        scene.add(ambientLight);
+
+        // --- Particle Configuration ---
+        const particles = [];
+        const PARTICLE_COUNT = 200;
+        const USER_NAME = "hey sravan";
+        const IMAGE_URL = "https://placehold.co/100x100/f472b6/1e293b?text=S";
+        
+        // --- IMPORTANT: ADD YOUR LOCAL IMAGE PATHS HERE ---
+        // 1. Create a folder named 'images' in your VS Code project.
+        // 2. Add your photos to that folder (e.g., photo1.jpg, photo2.png).
+        // 3. Update the paths in this array to match your file names.
+        const LOCAL_PHOTO_PATHS = [
+            'IMG_0457.JPG',
+            'IMG_0457.JPG',
+            'IMG_0457.JPG'
+        ];
+
+        const textureLoader = new THREE.TextureLoader();
+        const localPhotoTextures = LOCAL_PHOTO_PATHS.map(path => textureLoader.load(path));
+        
+        // --- Helper Function to Create Message Texture ---
+        function createMessageTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 128;
+            const context = canvas.getContext('2d');
+            context.fillStyle = 'rgba(20, 20, 20, 0.7)';
+            context.roundRect(0, 0, canvas.width, canvas.height, 64);
+            context.fill();
+            context.font = 'bold 60px Inter, sans-serif';
+            context.fillStyle = 'white';
+            context.shadowColor = '#ff3388';
+            context.shadowBlur = 20;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(USER_NAME, canvas.width / 2 + 50, canvas.height / 2);
+
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = "Anonymous";
+                img.src = IMAGE_URL;
+                img.onload = () => {
+                    context.save();
+                    context.beginPath();
+                    context.arc(64, 64, 50, 0, Math.PI * 2, true);
+                    context.closePath();
+                    context.clip();
+                    context.drawImage(img, 14, 14, 100, 100);
+                    context.restore();
+                    resolve(new THREE.CanvasTexture(canvas));
+                };
+                 img.onerror = () => resolve(new THREE.CanvasTexture(canvas));
+            });
+        }
+        
+        // --- Particle Creation Logic ---
+        async function createParticles() {
+            const messageTexture = await createMessageTexture();
+            const messageMaterial = new THREE.MeshBasicMaterial({ map: messageTexture, transparent: true });
+            
+            const heartShape = new THREE.Shape();
+            heartShape.moveTo( 25, 25 );
+            heartShape.bezierCurveTo( 25, 25, 20, 0, 0, 0 );
+            heartShape.bezierCurveTo( -30, 0, -30, 35, -30, 35 );
+            heartShape.bezierCurveTo( -30, 55, -10, 77, 25, 95 );
+            heartShape.bezierCurveTo( 60, 77, 80, 55, 80, 35 );
+            heartShape.bezierCurveTo( 80, 35, 80, 0, 50, 0 );
+            heartShape.bezierCurveTo( 35, 0, 25, 25, 25, 25 );
+            const heartGeometry = new THREE.ShapeGeometry(heartShape);
+            // The emissive properties make the hearts bright enough to be picked up by the bloom filter
+            // Intensity is lowered to prevent the red color from washing out to white/pink
+            const heartMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.5 });
+            
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                let mesh, type;
+                const rand = Math.random();
+
+                if (rand > 0.6) { // 40% chance of being a message
+                    const planeGeometry = new THREE.PlaneGeometry(4, 1);
+                    mesh = new THREE.Mesh(planeGeometry, messageMaterial);
+                    type = 'message';
+                } else if (rand > 0.2 && localPhotoTextures.length > 0) { // 40% chance of being a photo, if available
+                    const photoTexture = localPhotoTextures[Math.floor(Math.random() * localPhotoTextures.length)];
+                    const photoMaterial = new THREE.MeshBasicMaterial({ map: photoTexture, transparent: true });
+                    const photoGeometry = new THREE.PlaneGeometry(3, 3.75);
+                    mesh = new THREE.Mesh(photoGeometry, photoMaterial);
+                    type = 'photo';
+                } else { // Fallback to heart
+                    mesh = new THREE.Mesh(heartGeometry, heartMaterial);
+                    mesh.scale.set(0.03, 0.03, 0.03);
+                    type = 'heart';
+                }
+
+                mesh.position.set( (Math.random() - 0.5) * 50, (Math.random() - 0.5) * 50, (Math.random() - 0.5) * 50 );
+                mesh.userData = {
+                    type, ySpeed: 0.5 + Math.random(), xSpeed: (Math.random() - 0.5) * 0.5,
+                    zSpeed: (Math.random() - 0.5) * 0.5, rotSpeed: (Math.random() - 0.5) * 0.01,
+                    initialPhase: Math.random() * Math.PI * 2
+                };
+
+                scene.add(mesh);
+                particles.push(mesh);
+            }
+        }
+
+        // --- Animation Loop ---
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime();
+
+            particles.forEach(p => {
+                p.position.y += p.userData.ySpeed * delta * 5;
+                p.position.x += Math.sin(elapsedTime + p.userData.initialPhase) * p.userData.xSpeed * delta * 10;
+                p.rotation.z += p.userData.rotSpeed;
+                if (p.position.y > 25) { p.position.y = -25; }
+            });
+
+            controls.update();
+            // Use the composer to render the scene with the glow effect
+            composer.render();
+        }
+
+        // --- Handle Window Resize ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight); // Also resize the composer
+        });
+        
+        // --- Start Everything ---
+        createParticles();
+        animate();
+
+    </script>
+</body>
+</html>
+
+
+
+
+
